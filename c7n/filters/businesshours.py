@@ -1,5 +1,4 @@
 # Copyright 2016 Capital One Services, LLC
-# Copyright 2017 Ticketmaster® & Live Nation Entertainment®
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -49,17 +48,6 @@ The default off hours and on hours are specified per the policy configuration
 along with the opt-in/opt-out behavior. Resources can specify the timezone
 that they wish to have this scheduled utilized with.
 
-We also provide a `BusinessHours` filter, which supports the configuration options:
-
- - **weekends**: default true, whether to leave resources off for the weekend
- - **weekend-only**: default false, whether to turn the resource off only on
-   the weekend
- - **tag**: default BusinessHours, which resource tag key to look for the
-   resource's schedule.
- - **default_tz**: which timezone to utilize when evaluating time, default `pt`
- - **opt-out**: applies the default schedule to resource which do not specify
-   any value.  a value of `off` to disable/exclude the resource.
-
 Tag Based Configuration
 =======================
 
@@ -90,8 +78,6 @@ to disable offhours on a given instance.
 
 Policy examples
 ===============
-
-# offhour / onhour
 
 Turn ec2 instances on and off
 
@@ -130,27 +116,6 @@ Here's doing the same with auto scale groups
         actions:
            - resume
 
-# BusinessHours
-
-Turn ec2 instances on and off
-
-.. code-block:: yaml
-
-   policies:
-     - name: businesshours
-       resource: ec2
-       filters:
-          - type: BusinessHours
-
-Here's doing the same with auto scale groups
-
-.. code-block:: yaml
-
-    policies:
-      - name: asg-businesshours
-        resource: asg
-        filters:
-           - BusinessHours
 
 Options
 =======
@@ -163,8 +128,6 @@ Options
   with opt-out: true, the tag doesn't need to be present.
 
 
-# offhours / onhours
-
 .. code-block:: yaml
 
    policies:
@@ -173,19 +136,6 @@ Options
        filters:
          - type: offhour
            tag: downtime
-           onhour: 8
-           offhour: 20
-
-# BusinessHours
-
-.. code-block:: yaml
-
-   policies:
-     - name: businesshours
-       resource: ec2
-       filters:
-         - type: BusinessHours
-           tag: bizhours
            onhour: 8
            offhour: 20
 
@@ -352,15 +302,9 @@ class Time(Filter):
             self.parse_errors.append((rid, value))
             return False
 
-        now = datetime.datetime.now(tz)
+        now = datetime.datetime.now(tz).replace(
+            minute=0, second=0, microsecond=0)
         return self.match(now, schedule)
-
-    def is_time_in_time_period(self, start_time, end_time, qry_time):
-        if start_time < end_time:
-            # return qry_time >= start_time and qry_time <= end_time
-            return start_time <= qry_time <= end_time
-        else:  # Crosses midnight
-            return qry_time >= start_time or qry_time <= end_time
 
     def match(self, now, schedule):
         time = schedule.get(self.time_type, ())
@@ -395,21 +339,19 @@ class Time(Filter):
         raise NotImplementedError("use subclass")
 
 
-class BaseHour(Time):
+class OffHour(Time):
 
-    DEFAULT_HR = None
-    DEFAULT_MN = None
-    DEFAULT_OFF_HR = 19
-    DEFAULT_OFF_MN = 0
-    DEFAULT_ON_HR = 7
-    DEFAULT_ON_MN = 0
+    schema = type_schema(
+        'offhour', rinherit=Time.schema, required=['offhour', 'default_tz'],
+        offhour={'type': 'integer', 'minimum': 0, 'maximum': 23})
+    time_type = "off"
+
+    DEFAULT_HR = 19
 
     def get_default_schedule(self):
         default = {'tz': self.default_tz, self.time_type: [
             {'hour': self.data.get(
-                "%shour" % self.time_type, self.DEFAULT_HR)},
-            {'minute': self.data.get(
-                "%sminute" % self.time_type, self.DEFAULT_MN)}]}
+                "%shour" % self.time_type, self.DEFAULT_HR)}]}
         if self.weekends_only:
             default[self.time_type][0]['days'] = [4]
         elif self.weekends:
@@ -419,45 +361,27 @@ class BaseHour(Time):
         return default
 
 
-class OffHour(BaseHour):
-
-    schema = type_schema(
-        'offhour', rinherit=Time.schema, required=['offhour', 'default_tz'],
-        offhour={'type': 'integer', 'minimum': 0, 'maximum': 23},
-        offminute={'type': 'integer', 'minimum': 0, 'maximum': 59})
-    time_type = "off"
-
-    def __init__(self):
-        super(OffHour, self).__init__()
-        self.DEFAULT_HR = self.DEFAULT_OFF_HR
-        self.DEFAULT_MN = self.DEFAULT_OFF_MN
-
-
-class OnHour(BaseHour):
+class OnHour(Time):
 
     schema = type_schema(
         'onhour', rinherit=Time.schema, required=['onhour', 'default_tz'],
-        onhour={'type': 'integer', 'minimum': 0, 'maximum': 23},
-        onminute={'type': 'integer', 'minimum': 0, 'maximum': 59})
+        onhour={'type': 'integer', 'minimum': 0, 'maximum': 23})
     time_type = "on"
 
-    def __init__(self):
-        super(OnHour, self).__init__()
-        self.DEFAULT_HR = self.DEFAULT_ON_HR
-        self.DEFAULT_MN = self.DEFAULT_ON_MN
+    DEFAULT_HR = 7
 
-
-class BusinessHours(BaseHour):
-
-    schema = type_schema(
-        'businesshours', rinherit=Time.schema, required=['businesshours'],
-        businesshours={'type': 'string'})
-    time_type = "biz"
-
-    def __init__(self):
-        super(BusinessHours, self).__init__()
-        self.DEFAULT_TAG = "BusinessHours"
-        self.DEFAULT_TZ = "pt"
+    def get_default_schedule(self):
+        default = {'tz': self.default_tz, self.time_type: [
+            {'hour': self.data.get(
+                "%shour" % self.time_type, self.DEFAULT_HR)}]}
+        if self.weekends_only:
+            # turn on monday
+            default[self.time_type][0]['days'] = [0]
+        elif self.weekends:
+            default[self.time_type][0]['days'] = range(5)
+        else:
+            default[self.time_type][0]['days'] = range(7)
+        return default
 
 
 class ScheduleParser(object):
@@ -469,9 +393,9 @@ class ScheduleParser(object):
     **Schedule format**::
 
         # up mon-fri from 7am-7pm; eastern time
-        off=(M-F,18,30);on=(M-F,7)
+        off=(M-F,19);on=(M-F,7)
         # up mon-fri from 6am-9pm; up sun from 10am-6pm; pacific time
-        off=[(M-F,21),(U,18,30)];on=[(M-F,6,30),(U,10)];tz=pt
+        off=[(M-F,21),(U,18)];on=[(M-F,6),(U,10)];tz=pt
 
     **Possible values**:
 
@@ -481,8 +405,6 @@ class ScheduleParser(object):
         | days       | M, T, W, H, F, S, U  |
         +------------+----------------------+
         | hours      | 0, 1, 2, ..., 22, 23 |
-        +------------+----------------------+
-        | minutes    | 0, 1, 2, ..., 58, 59 |
         +------------+----------------------+
 
         Days can be specified in a range (ex. M-F).
@@ -495,15 +417,15 @@ class ScheduleParser(object):
     The schedule parser will return a ``dict`` or ``None`` (if the schedule is
     invalid)::
 
-        # off=[(M-F,21),(U,18,30)];on=[(M-F,6,30),(U,10)];tz=pt
+        # off=[(M-F,21),(U,18)];on=[(M-F,6),(U,10)];tz=pt
         {
           off: [
-            { days: "M-F", hour: 21, minute: 0 },
-            { days: "U", hour: 18, minute: 30 }
+            { days: "M-F", hour: 21 },
+            { days: "U", hour: 18 }
           ],
           on: [
-            { days: "M-F", hour: 6, minute: 30 },
-            { days: "U", hour: 10, minute: 0 }
+            { days: "M-F", hour: 6 },
+            { days: "U", hour: 10 }
           ],
           tz: "pt"
         }
@@ -512,7 +434,6 @@ class ScheduleParser(object):
 
     DAY_MAP = {'m': 0, 't': 1, 'w': 2, 'h': 3, 'f': 4, 's': 5, 'u': 6}
     VALID_HOURS = tuple(range(24))
-    VALID_MINUTES = tuple(range(60))
 
     def __init__(self, default_schedule):
         self.default_schedule = default_schedule
@@ -587,27 +508,18 @@ class ScheduleParser(object):
         exprs = lexeme.translate(None, '[]').split(',(')
         for e in exprs:
             tokens = e.translate(None, '()').split(',')
-            # custom hours must have two parts or three parts: (<days>, <hour>) (<days>, <hour>, <minute>)
-            tokens_count = len(tokens)
-            if 3 > tokens_count < 2:
+            # custom hours must have two parts: (<days>, <hour>)
+            if not len(tokens) == 2:
                 return None
-            if tokens_count == 3:
-                if not tokens[2].isdigit():
-                    return None
-                minute = int(tokens[2])
-            else:
-                minute = 0
             if not tokens[1].isdigit():
                 return None
             hour = int(tokens[1])
             if hour not in self.VALID_HOURS:
                 return None
-            if minute not in self.VALID_MINUTES:
-                return None
             days = self.expand_day_range(tokens[0])
             if not days:
                 return None
-            parsed.append({'days': days, 'hour': hour, 'minute': minute})
+            parsed.append({'days': days, 'hour': hour})
         return parsed
 
     def expand_day_range(self, days):
