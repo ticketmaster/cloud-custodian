@@ -1,5 +1,5 @@
 # Copyright 2016 Capital One Services, LLC
-# Copyright 2017 Ticketmaster® & Live Nation Entertainment®
+# Copyright 2017 Ticketmaster & Live Nation Entertainment
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -417,42 +417,42 @@ class ScheduleParserTest(BaseTest):
         ################
         # Standard cases
         ('off=(m-f,10);on=(m-f,7);tz=et',
-         {'off': [{'days': [0, 1, 2, 3, 4], 'hour': 10}],
-          'on': [{'days': [0, 1, 2, 3, 4], 'hour': 7}],
+         {'off': [{'days': [0, 1, 2, 3, 4], 'hour': 10, 'minute': 0}],
+          'on': [{'days': [0, 1, 2, 3, 4], 'hour': 7, 'minute': 0}],
           'tz': 'et'}),
         ("off=[(m-f,9)];on=(m-s,10);tz=pt",
-         {'off': [{'days': [0, 1, 2, 3, 4], 'hour': 9}],
-          'on': [{'days': [0, 1, 2, 3, 4, 5], 'hour': 10}],
+         {'off': [{'days': [0, 1, 2, 3, 4], 'hour': 9, 'minute': 0}],
+          'on': [{'days': [0, 1, 2, 3, 4, 5], 'hour': 10, 'minute': 0}],
           'tz': 'pt'}),
         ("off=[(m-f,23)];on=(m-s,10);tz=pt",
-         {'off': [{'days': [0, 1, 2, 3, 4], 'hour': 23}],
-          'on': [{'days': [0, 1, 2, 3, 4, 5], 'hour': 10}],
+         {'off': [{'days': [0, 1, 2, 3, 4], 'hour': 23, 'minute': 0}],
+          'on': [{'days': [0, 1, 2, 3, 4, 5], 'hour': 10, 'minute': 0}],
           'tz': 'pt'}),
         ('off=(m-f,19);on=(m-f,7);tz=pst',
-         {'off': [{'days': [0, 1, 2, 3, 4], 'hour': 19}],
-          'on': [{'days': [0, 1, 2, 3, 4], 'hour': 7}],
+         {'off': [{'days': [0, 1, 2, 3, 4], 'hour': 19, 'minute': 0}],
+          'on': [{'days': [0, 1, 2, 3, 4], 'hour': 7, 'minute': 0}],
           'tz': 'pst'}),
         # wrap around days (saturday, sunday, monday)
         ('on=[(s-m,10)];off=(s-m,19)',
-         {'on': [{'days': [5, 6, 0], 'hour': 10}],
-          'off': [{'days': [5, 6, 0], 'hour': 19}],
+         {'on': [{'days': [5, 6, 0], 'hour': 10, 'minute': 0}],
+          'off': [{'days': [5, 6, 0], 'hour': 19, 'minute': 0}],
           'tz': 'et'}),
         # multiple single days specified
         ('on=[(m,9),(t,10),(w,7)];off=(m-u,19)',
-         {'on': [{'days': [0], 'hour': 9},
-                 {'days': [1], 'hour': 10},
-                 {'days': [2], 'hour': 7}],
-          'off': [{'days': [0, 1, 2, 3, 4, 5, 6], 'hour': 19}],
+         {'on': [{'days': [0], 'hour': 9, 'minute': 0},
+                 {'days': [1], 'hour': 10, 'minute': 0},
+                 {'days': [2], 'hour': 7, 'minute': 0}],
+          'off': [{'days': [0, 1, 2, 3, 4, 5, 6], 'hour': 19, 'minute': 0}],
           'tz': 'et'}),
         # using brackets also works, if only single time set
         ('off=[m-f,20];on=[m-f,5];tz=est',
-         {'on': [{'days': [0, 1, 2, 3, 4], 'hour': 5}],
-          'off': [{'days': [0, 1, 2, 3, 4], 'hour': 20}],
+         {'on': [{'days': [0, 1, 2, 3, 4], 'hour': 5, 'minute': 0}],
+          'off': [{'days': [0, 1, 2, 3, 4], 'hour': 20, 'minute': 0}],
           'tz': 'est'}),
         # same string, exercise cache lookup.
         ('off=[m-f,20];on=[m-f,5];tz=est',
-         {'on': [{'days': [0, 1, 2, 3, 4], 'hour': 5}],
-          'off': [{'days': [0, 1, 2, 3, 4], 'hour': 20}],
+         {'on': [{'days': [0, 1, 2, 3, 4], 'hour': 5, 'minute': 0}],
+          'off': [{'days': [0, 1, 2, 3, 4], 'hour': 20, 'minute': 0}],
           'tz': 'est'}),
 
         ################

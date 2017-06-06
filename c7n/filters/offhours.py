@@ -1,5 +1,5 @@
 # Copyright 2016 Capital One Services, LLC
-# Copyright 2017 Ticketmaster® & Live Nation Entertainment®
+# Copyright 2017 Ticketmaster & Live Nation Entertainment
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -196,6 +196,7 @@ import datetime
 import logging
 from os.path import join
 
+from collections import defaultdict
 from dateutil import zoneinfo
 
 from c7n.filters import Filter, FilterValidationError
@@ -353,14 +354,27 @@ class Time(Filter):
             return False
 
         now = datetime.datetime.now(tz)
-        return self.match(now, schedule)
+        # return self.match(now, schedule)
+        ranged_schedule = self.parser.get_ranges(schedule)
+        matched_range = self.match_range(now, ranged_schedule)
+        if self.time_type == 'on':
+            return matched_range
+        else:
+            return not matched_range
 
     def is_time_in_time_period(self, start_time, end_time, qry_time):
         if start_time < end_time:
-            # return qry_time >= start_time and qry_time <= end_time
             return start_time <= qry_time <= end_time
         else:  # Crosses midnight
             return qry_time >= start_time or qry_time <= end_time
+
+    def match_range(self, now, ranged_schedule):
+        if not now.weekday() in ranged_schedule:
+            return False
+        for r in ranged_schedule[now.weekday()]:
+            if self.is_time_in_time_period(r['start'], r['end'], now.time()):
+                return True
+        return False
 
     def match(self, now, schedule):
         time = schedule.get(self.time_type, ())
@@ -427,8 +441,8 @@ class OffHour(BaseHour):
         offminute={'type': 'integer', 'minimum': 0, 'maximum': 59})
     time_type = "off"
 
-    def __init__(self):
-        super(OffHour, self).__init__()
+    def __init__(self, data, manager=None):
+        super(OffHour, self).__init__(data, manager)
         self.DEFAULT_HR = self.DEFAULT_OFF_HR
         self.DEFAULT_MN = self.DEFAULT_OFF_MN
 
@@ -441,8 +455,8 @@ class OnHour(BaseHour):
         onminute={'type': 'integer', 'minimum': 0, 'maximum': 59})
     time_type = "on"
 
-    def __init__(self):
-        super(OnHour, self).__init__()
+    def __init__(self, data, manager=None):
+        super(OnHour, self).__init__(data, manager)
         self.DEFAULT_HR = self.DEFAULT_ON_HR
         self.DEFAULT_MN = self.DEFAULT_ON_MN
 
@@ -454,8 +468,8 @@ class BusinessHours(BaseHour):
         businesshours={'type': 'string'})
     time_type = "biz"
 
-    def __init__(self):
-        super(BusinessHours, self).__init__()
+    def __init__(self, data, manager=None):
+        super(BusinessHours, self).__init__(data, manager)
         self.DEFAULT_TAG = "BusinessHours"
         self.DEFAULT_TZ = "pt"
 
@@ -464,7 +478,7 @@ class ScheduleParser(object):
     """Parses tag values for custom on/off hours schedules.
 
     At the minimum the ``on`` and ``off`` values are required. Each of
-    these must be seperated by a ``;`` in the format described below.
+    these must be separated by a ``;`` in the format described below.
 
     **Schedule format**::
 
@@ -545,6 +559,28 @@ class ScheduleParser(object):
                 return False
         return True
 
+    def parse_toggles(self, toggles, toggle_name, results):
+        for toggle in toggles:
+            for day in toggle['days']:
+                toggle_time = "%d:%d" % (toggle['hour'], toggle['minute'])
+                if not results or not results[day]:
+                    results[day].append(
+                        {toggle_name: datetime.datetime.strptime(
+                            toggle_time, "%H:%M").time()})
+                else:
+                    for d in results[day]:
+                        d[toggle_name] = datetime.datetime.strptime(
+                            toggle_time, "%H:%M").time()
+
+    def get_ranges(self, schedule):
+        """convert the on&off toggle-based schedule to a more
+        flexible range-based schedule.
+        """
+        ranged_schedule = defaultdict(list)
+        self.parse_toggles(schedule['on'], 'start', ranged_schedule)
+        self.parse_toggles(schedule['off'], 'end', ranged_schedule)
+        return ranged_schedule
+
     def parse(self, tag_value):
         # check the cache
         if tag_value in self.cache:
@@ -587,7 +623,8 @@ class ScheduleParser(object):
         exprs = lexeme.translate(None, '[]').split(',(')
         for e in exprs:
             tokens = e.translate(None, '()').split(',')
-            # custom hours must have two parts or three parts: (<days>, <hour>) (<days>, <hour>, <minute>)
+            # custom hours must have either: two parts - (<days>, <hour>)
+            #                   or three parts - (<days>, <hour>, <minute>)
             tokens_count = len(tokens)
             if 3 > tokens_count < 2:
                 return None
