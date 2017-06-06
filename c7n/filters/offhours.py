@@ -269,9 +269,12 @@ class Time(Filter):
         if self.get_tz(self.default_tz) is None:
             raise FilterValidationError(
                 "Invalid timezone specified %s" % self.default_tz)
-        hour = self.data.get("%shour" % self.time_type, self.DEFAULT_HR)
+        hour = self.data.get("%shour" % self.time_type, self.default_hour)
         if hour not in self.parser.VALID_HOURS:
             raise FilterValidationError("Invalid hour specified %s" % hour)
+        minute = self.data.get("%sminute" % self.time_type, self.default_minute)
+        if minute not in self.parser.VALID_MINUTES:
+            raise FilterValidationError("Invalid minute specified %s" % minute)
         return self
 
     def process(self, resources, event=None):
@@ -401,6 +404,15 @@ class Time(Filter):
         value = value.strip("'").strip('"')
         return value
 
+    def inverse_time_type(self):
+        """Returns the inverse of the current instance of time_type."""
+        if self.time_type == 'on':
+            return 'off'
+        elif self.time_type == 'off':
+            return 'on'
+        else:  # unknown type to inverse
+            raise NotImplementedError("Unknown inverse for given time_type: %s", self.time_type)
+
     @classmethod
     def get_tz(cls, tz):
         return zoneinfo.gettz(cls.TZ_ALIASES.get(tz, tz))
@@ -411,25 +423,37 @@ class Time(Filter):
 
 class BaseHour(Time):
 
-    DEFAULT_HR = None
-    DEFAULT_MN = None
     DEFAULT_OFF_HR = 19
     DEFAULT_OFF_MN = 0
     DEFAULT_ON_HR = 7
     DEFAULT_ON_MN = 0
 
-    def get_default_schedule(self):
-        default = {'tz': self.default_tz, self.time_type: [
-            {'hour': self.data.get(
-                "%shour" % self.time_type, self.DEFAULT_HR)},
-            {'minute': self.data.get(
-                "%sminute" % self.time_type, self.DEFAULT_MN)}]}
+    default_hour = None
+    default_minute = None
+
+    # def __init__(self, data, manager=None):
+    #     super(BaseHour, self).__init__(data, manager)
+    #     self.default_hour = None
+    #     self.default_minute = None
+
+    def get_time_struct(self, time_type):
+        time_struct = [{
+            'hour': self.data.get(
+                "%shour" % time_type, self.default_hour),
+            'minute': self.data.get(
+                "%sminute" % self.time_type, self.default_minute)}]
         if self.weekends_only:
-            default[self.time_type][0]['days'] = [4]
+            time_struct[0]['days'] = [4]
         elif self.weekends:
-            default[self.time_type][0]['days'] = range(5)
+            time_struct[0]['days'] = range(5)
         else:
-            default[self.time_type][0]['days'] = range(7)
+            time_struct[0]['days'] = range(7)
+        return time_struct
+
+    def get_default_schedule(self):
+        default = {'tz': self.default_tz,
+                   self.time_type: self.get_time_struct(self.time_type),
+                   self.inverse_time_type(): self.get_time_struct(self.inverse_time_type())}
         return default
 
 
@@ -440,11 +464,13 @@ class OffHour(BaseHour):
         offhour={'type': 'integer', 'minimum': 0, 'maximum': 23},
         offminute={'type': 'integer', 'minimum': 0, 'maximum': 59})
     time_type = "off"
+    default_hour = BaseHour.DEFAULT_OFF_HR
+    default_minute = BaseHour.DEFAULT_OFF_MN
 
-    def __init__(self, data, manager=None):
-        super(OffHour, self).__init__(data, manager)
-        self.DEFAULT_HR = self.DEFAULT_OFF_HR
-        self.DEFAULT_MN = self.DEFAULT_OFF_MN
+    # def __init__(self, data, manager=None):
+    #     super(OffHour, self).__init__(data, manager)
+    #     self.default_hour = self.DEFAULT_OFF_HR
+    #     self.default_minute = self.DEFAULT_OFF_MN
 
 
 class OnHour(BaseHour):
@@ -454,11 +480,13 @@ class OnHour(BaseHour):
         onhour={'type': 'integer', 'minimum': 0, 'maximum': 23},
         onminute={'type': 'integer', 'minimum': 0, 'maximum': 59})
     time_type = "on"
+    default_hour = BaseHour.DEFAULT_ON_HR
+    default_minute = BaseHour.DEFAULT_ON_MN
 
-    def __init__(self, data, manager=None):
-        super(OnHour, self).__init__(data, manager)
-        self.DEFAULT_HR = self.DEFAULT_ON_HR
-        self.DEFAULT_MN = self.DEFAULT_ON_MN
+    # def __init__(self, data, manager=None):
+    #     super(OnHour, self).__init__(data, manager)
+    #     self.default_hour = self.DEFAULT_ON_HR
+    #     self.default_minute = self.DEFAULT_ON_MN
 
 
 class BusinessHours(BaseHour):
