@@ -204,6 +204,23 @@ from c7n.utils import type_schema, dumps
 
 log = logging.getLogger('custodian.offhours')
 
+"""
+    Constants
+"""
+# TT = time_type
+TT_ON = 'on'
+TT_OFF = 'off'
+TT_BIZ = 'biz'
+
+RANGE_START = 'start'
+RANGE_END = 'end'
+
+DAYS = 'days'
+HOUR = 'hour'
+MINUTE = 'minute'
+SECOND = 'second'
+TZ = 'tz'
+
 
 class Time(Filter):
 
@@ -309,7 +326,7 @@ class Time(Filter):
             value = ""  # take the defaults
 
         # Resource opt out, track and record
-        if 'off' == value:
+        if TT_OFF == value:
             self.opted_out.append(i)
             return False
         else:
@@ -335,9 +352,9 @@ class Time(Filter):
         elif self.parser.keys_are_valid(value):
             # respect timezone from tag
             raw_data = self.parser.raw_data(value)
-            if 'tz' in raw_data:
+            if TZ in raw_data:
                 schedule = dict(self.default_schedule)
-                schedule['tz'] = raw_data['tz']
+                schedule[TZ] = raw_data[TZ]
             else:
                 schedule = self.default_schedule
         else:
@@ -349,40 +366,40 @@ class Time(Filter):
             self.parse_errors.append((rid, value))
             return False
 
-        tz = self.get_tz(schedule['tz'])
+        tz = self.get_tz(schedule[TZ])
         if not tz:
             log.warning(
                 "Could not resolve tz on resource:%s value:%s", rid, value)
             self.parse_errors.append((rid, value))
             return False
 
-        now = datetime.datetime.now(tz)
+        now = datetime.datetime.now(tz).replace(second=0, microsecond=0)
         # return self.match(now, schedule)
         ranged_schedule = self.parser.get_ranges(schedule)
         matched_range = self.match_range(now, ranged_schedule)
-        if self.time_type == 'on':
+        if self.time_type == TT_ON:
             return matched_range
         else:
             return not matched_range
 
     def is_time_in_time_period(self, start_time, end_time, qry_time):
         if start_time < end_time:
-            return start_time <= qry_time <= end_time
+            return start_time <= qry_time < end_time
         else:  # Crosses midnight
-            return qry_time >= start_time or qry_time <= end_time
+            return qry_time >= start_time or qry_time < end_time
 
     def match_range(self, now, ranged_schedule):
         if not now.weekday() in ranged_schedule:
             return False
         for r in ranged_schedule[now.weekday()]:
-            if self.is_time_in_time_period(r['start'], r['end'], now.time()):
+            if self.is_time_in_time_period(r[RANGE_START], r[RANGE_END], now.time()):
                 return True
         return False
 
     def match(self, now, schedule):
         time = schedule.get(self.time_type, ())
         for item in time:
-            days, hour = item.get("days"), item.get('hour')
+            days, hour = item.get(DAYS), item.get(HOUR)
             if now.weekday() in days and now.hour == hour:
                 return True
         return False
@@ -406,10 +423,10 @@ class Time(Filter):
 
     def inverse_time_type(self):
         """Returns the inverse of the current instance of time_type."""
-        if self.time_type == 'on':
-            return 'off'
-        elif self.time_type == 'off':
-            return 'on'
+        if self.time_type == TT_ON:
+            return TT_OFF
+        elif self.time_type == TT_OFF:
+            return TT_ON
         else:  # unknown type to inverse
             raise NotImplementedError("Unknown inverse for given time_type: %s", self.time_type)
 
@@ -423,10 +440,16 @@ class Time(Filter):
 
 class BaseHour(Time):
 
-    DEFAULT_OFF_HR = 19
-    DEFAULT_OFF_MN = 0
-    DEFAULT_ON_HR = 7
-    DEFAULT_ON_MN = 0
+    DEFAULTS = {
+        TT_ON: {
+            HOUR: 7,
+            MINUTE: 0
+        },
+        TT_OFF: {
+            HOUR: 19,
+            MINUTE: 0
+        }
+    }
 
     default_hour = None
     default_minute = None
@@ -438,20 +461,20 @@ class BaseHour(Time):
 
     def get_time_struct(self, time_type):
         time_struct = [{
-            'hour': self.data.get(
-                "%shour" % time_type, self.default_hour),
-            'minute': self.data.get(
-                "%sminute" % self.time_type, self.default_minute)}]
+            HOUR: self.data.get(
+                "%shour" % time_type, self.DEFAULTS[time_type][HOUR]),
+            MINUTE: self.data.get(
+                "%sminute" % time_type, self.DEFAULTS[time_type][MINUTE])}]
         if self.weekends_only:
-            time_struct[0]['days'] = [4]
+            time_struct[0][DAYS] = [4]
         elif self.weekends:
-            time_struct[0]['days'] = range(5)
+            time_struct[0][DAYS] = range(5)
         else:
-            time_struct[0]['days'] = range(7)
+            time_struct[0][DAYS] = range(7)
         return time_struct
 
     def get_default_schedule(self):
-        default = {'tz': self.default_tz,
+        default = {TZ: self.default_tz,
                    self.time_type: self.get_time_struct(self.time_type),
                    self.inverse_time_type(): self.get_time_struct(self.inverse_time_type())}
         return default
@@ -463,9 +486,9 @@ class OffHour(BaseHour):
         'offhour', rinherit=Time.schema, required=['offhour', 'default_tz'],
         offhour={'type': 'integer', 'minimum': 0, 'maximum': 23},
         offminute={'type': 'integer', 'minimum': 0, 'maximum': 59})
-    time_type = "off"
-    default_hour = BaseHour.DEFAULT_OFF_HR
-    default_minute = BaseHour.DEFAULT_OFF_MN
+    time_type = TT_OFF
+    default_hour = BaseHour.DEFAULTS[TT_OFF][HOUR]
+    default_minute = BaseHour.DEFAULTS[TT_OFF][MINUTE]
 
     # def __init__(self, data, manager=None):
     #     super(OffHour, self).__init__(data, manager)
@@ -479,9 +502,9 @@ class OnHour(BaseHour):
         'onhour', rinherit=Time.schema, required=['onhour', 'default_tz'],
         onhour={'type': 'integer', 'minimum': 0, 'maximum': 23},
         onminute={'type': 'integer', 'minimum': 0, 'maximum': 59})
-    time_type = "on"
-    default_hour = BaseHour.DEFAULT_ON_HR
-    default_minute = BaseHour.DEFAULT_ON_MN
+    time_type = TT_ON
+    default_hour = BaseHour.DEFAULTS[TT_ON][HOUR]
+    default_minute = BaseHour.DEFAULTS[TT_ON][MINUTE]
 
     # def __init__(self, data, manager=None):
     #     super(OnHour, self).__init__(data, manager)
@@ -494,7 +517,7 @@ class BusinessHours(BaseHour):
     schema = type_schema(
         'businesshours', rinherit=Time.schema, required=['businesshours'],
         businesshours={'type': 'string'})
-    time_type = "biz"
+    time_type = TT_BIZ
 
     def __init__(self, data, manager=None):
         super(BusinessHours, self).__init__(data, manager)
@@ -583,14 +606,14 @@ class ScheduleParser(object):
     def keys_are_valid(self, tag_value):
         """test that provided tag keys are valid"""
         for key in ScheduleParser.raw_data(tag_value):
-            if key not in ('on', 'off', 'tz'):
+            if key not in (TT_ON, TT_OFF, TZ):
                 return False
         return True
 
     def parse_toggles(self, toggles, toggle_name, results):
         for toggle in toggles:
-            for day in toggle['days']:
-                toggle_time = "%d:%d" % (toggle['hour'], toggle['minute'])
+            for day in toggle[DAYS]:
+                toggle_time = "%d:%d" % (toggle[HOUR], toggle[MINUTE])
                 if not results or not results[day]:
                     results[day].append(
                         {toggle_name: datetime.datetime.strptime(
@@ -605,8 +628,8 @@ class ScheduleParser(object):
         flexible range-based schedule.
         """
         ranged_schedule = defaultdict(list)
-        self.parse_toggles(schedule['on'], 'start', ranged_schedule)
-        self.parse_toggles(schedule['off'], 'end', ranged_schedule)
+        self.parse_toggles(schedule[TT_ON], RANGE_START, ranged_schedule)
+        self.parse_toggles(schedule[TT_OFF], RANGE_END, ranged_schedule)
         return ranged_schedule
 
     def parse(self, tag_value):
@@ -626,15 +649,15 @@ class ScheduleParser(object):
             if not len(kv) == 2:
                 return None
             key, value = kv
-            if key != 'tz':
+            if key != TZ:
                 value = self.parse_resource_schedule(value)
             if value is None:
                 return None
             schedule[key] = value
 
         # add default timezone, if none supplied or blank
-        if not schedule.get('tz'):
-            schedule['tz'] = self.default_schedule['tz']
+        if not schedule.get(TZ):
+            schedule[TZ] = self.default_schedule[TZ]
 
         # cache
         self.cache[tag_value] = schedule
@@ -672,7 +695,7 @@ class ScheduleParser(object):
             days = self.expand_day_range(tokens[0])
             if not days:
                 return None
-            parsed.append({'days': days, 'hour': hour, 'minute': minute})
+            parsed.append({DAYS: days, HOUR: hour, MINUTE: minute})
         return parsed
 
     def expand_day_range(self, days):
