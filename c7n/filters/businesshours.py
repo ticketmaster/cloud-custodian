@@ -3,30 +3,25 @@ import logging
 from c7n.commands import policy_command
 from c7n.filters import FilterValidationError
 from c7n.filters.offhours import Time
+from c7n.utils import type_schema
 
 log = logging.getLogger('custodian.businesshours')
 
 
 class BusinessHours(Time):
 
-    schema = {
-        'type': 'object',
-        'properties': {
-            'tag': {'type': 'string'},
-            'default-businesshours': {'type': 'string'},
-            'weekends': {'type': 'boolean'},
-            'opt-out': {'type': 'boolean'},
-        }
-    }
+    schema = type_schema(
+        'offhour', rinherit=Time.schema, required=[],
+        businesshours={'type': 'string'})
 
     time_type = 'on'
 
     # Defaults and constants
     DEFAULT_TAG = "BusinessHours"
     DEFAULT_BUSINESSHOURS = "8:00-18:00 PT"
+    DEFAULT_TZ = 'pt'
     DEFAULT_OFFHOUR = 18
     DEFAULT_ONHOUR = 8
-    DEFAULT_TZ = "pt"
     DEFAULT_WEEKENDS = True
     DEFAULT_OPTOUT = True
     DEFAULT_ACTIONS = {
@@ -48,10 +43,19 @@ class BusinessHours(Time):
 
     def __init__(self, data, manager=None):
         super(BusinessHours, self).__init__(data, manager)
-        self.weekends = self.data.get('weekends', self.DEFAULT_WEEKENDS)
         self.opt_out = self.data.get('opt-out', self.DEFAULT_OPTOUT)
-        self.tag_key = self.data.get('tag', self.DEFAULT_TAG).lower()
-        self.default_businesshours = self.data.get('default-businesshours', self.DEFAULT_BUSINESSHOURS)
+        self.default_businesshours = self.data.get('businesshours', self.DEFAULT_BUSINESSHOURS)
+        self.DEFAULT_HR = self.DEFAULT_ONHOUR  # Temporary for tests
+
+    def validate(self):
+        """
+        Really basic validation here, because we're relying upon validation
+        provided by OffHour and OnHour classes.
+        """
+        businesshours = self.data.get("businesshours", self.DEFAULT_BUSINESSHOURS)
+        if not businesshours:
+            raise FilterValidationError("Invalid businesshours specified %s" % businesshours)
+        return self
 
     def get_default_schedule(self):
         return None

@@ -97,11 +97,7 @@ class BusinessHoursFilterTest(BaseTest):
 
     def test_validate(self):
         self.assertRaises(
-            FilterValidationError, OffHour({'default_tz': 'zmta'}).validate)
-        self.assertRaises(
-            FilterValidationError, OffHour({'offhour': 25}).validate)
-        i = OffHour({})
-        self.assertEqual(i.validate(), i)
+            FilterValidationError, BusinessHours({}).validate)
 
     def test_process(self):
         f = OffHour({'opt-out': True})
@@ -318,8 +314,8 @@ class BusinessHoursFilterTest(BaseTest):
                               tzinfo=zoneinfo.gettz('America/New_York'))
         with mock_datetime_now(t, datetime):
             i = instance(Tags=[
-                {'Key': 'BusinessHours', 'Value': 'tz=est'}])
-            self.assertEqual(OffHour({})(i), True)
+                {'Key': 'BusinessHours', 'Value': '8:00-18:00 PT'}])
+            self.assertEqual(BusinessHours({})(i), True)
 
     def test_onhour(self):
         t = datetime.datetime(year=2015, month=12, day=1, hour=7, minute=5,
