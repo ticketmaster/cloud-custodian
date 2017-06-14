@@ -2,7 +2,7 @@ import logging
 
 from c7n.commands import policy_command
 from c7n.filters import FilterValidationError
-from c7n.filters.offhours import Time
+from c7n.filters.offhours import Time, OnHour, OffHour
 from c7n.utils import type_schema
 from collections import namedtuple
 from c7n import utils
@@ -19,14 +19,7 @@ TT_ON = 'on'
 TT_OFF = 'off'
 
 
-class BusinessHours(Time):
-
-    schema = type_schema(
-        OFFHOUR, rinherit=Time.schema, required=[],
-        businesshours={'type': 'string'})
-
-    time_type = TT_ON
-
+class BusinessHours(object):
     # Defaults and constants
     DEFAULT_TAG = "BusinessHours"
     DEFAULT_BUSINESSHOURS = "8:00-18:00 PT"
@@ -35,32 +28,6 @@ class BusinessHours(Time):
     DEFAULT_ONHOUR = 8
     DEFAULT_WEEKENDS = True
     DEFAULT_OPTOUT = True
-    DEFAULT_ACTIONS = {
-        'resource_type': {
-            'asg': {
-                TT_OFF: 'suspend',
-                TT_ON: 'resume'
-            },
-            'ec2': {
-                TT_OFF: 'stop',
-                TT_ON: 'start'
-            },
-            # 'rds': {
-            #     TT_OFF: 'stop',
-            #     TT_ON: 'start'
-            # }
-        }
-    }
-
-    def __init__(self, data, manager=None):
-        super(BusinessHours, self).__init__(data, manager)
-        self.opt_out = self.data.get('opt-out', self.DEFAULT_OPTOUT)
-        self.default_businesshours = self.data.get(BIZHOURS, self.DEFAULT_BUSINESSHOURS)
-        self.DEFAULT_HR = self.DEFAULT_ONHOUR  # Temporary for tests
-
-    def process(self, resources, event=None):
-        resources = super(BusinessHours, self).process(resources)
-        return resources
 
     def validate(self):
         """
@@ -71,52 +38,6 @@ class BusinessHours(Time):
         if not businesshours:
             raise FilterValidationError("Invalid businesshours specified %s" % businesshours)
         return self
-
-    def get_default_schedule(self):
-        return None
-
-    def process_resource_schedule(self, i, value, time_type):
-        bh_parsed = self.parse(value)
-        offhours_tags = self.get_offhours_tags()
-        # self.tag_resource(i, offhours_tags)
-        # for resource in self.DEFAULT_ACTIONS['resource_type'].keys():
-        #     for time_type, hour in zip(
-        #             [TT_ON, TT_OFF], [bh_parsed.on_hour, bh_parsed.off_hour]):
-        #         offhour_policies['policies'].append(PolicyBuilder(
-        #             time_type, resource, hour, bh_parsed.tz).policy)
-        # self.run_offhours(offhour_policies)
-        return False
-
-    def get_offhours_tags(self):
-        """
-        Very simple helper function right now. Gives the framework for more
-        complexity later, should we desire to make BusinessHours more
-        configurable (ie: weekends rules)
-        :return: dict {'on'"(m-f,
-        """
-        return []
-
-    def tag_resource(self, resource, tags):
-        client = utils.local_session(
-            self.manager.session_factory).client('ec2')
-
-        self.manager.retry(
-            client.create_tags,
-            Resources=[resource[self.id_key]],
-            Tags=tags,
-            DryRun=self.manager.config.dryrun)
-
-    @policy_command
-    def run_offhours(self, policies, debug=False):
-        for policy in policies:
-            try:
-                policy()
-            except Exception:
-                if debug:
-                    raise
-                log.exception(
-                    "Error while executing policy %s, continuing" % (
-                        policy.name))
 
     def parse(self, tag_value):
         """
@@ -142,6 +63,47 @@ class BusinessHours(Time):
                 "Invalid BusinessHours tag specified %s" % tag_value)
         return namedtuple('BHParsed', [ONHOUR, OFFHOUR, TZ])(on_hour, off_hour, bh_tz)
 
+class BusinessHoursOn(BusinessHours, OnHour):
+    schema = type_schema(
+        'businesshours_on', rinherit=OnHour.schema)
+
+    time_type = TT_ON
+
+    def __init__(self, data, manager=None):
+        super(BusinessHours, self).__init__(data, manager)
+        self.opt_out = self.data.get('opt-out', self.DEFAULT_OPTOUT)
+        self.default_businesshours = self.data.get(BIZHOURS, self.DEFAULT_BUSINESSHOURS)
+        self.DEFAULT_HR = self.DEFAULT_ONHOUR  # Temporary for tests
+
+    # convert from 8:30-18:30 PT to on=(M-F,8);tz=pt
+    def get_tag_value(self, i):
+        raw_value = super(BusinessHoursOn, self).get_tag_value(self, i)
+        if raw_value is False:
+            return ""; # Use the default
+
+        on_hour, off_hour, tz = super(BusinessHoursOn, self).parse(raw_value)
+        return "{}=(M-F,{});tz={}".format(self.time_type, on_hour, tz)
+
+
+class BusinessHoursOff(BusinessHours, OffHour):
+    schema = type_schema(
+        'businesshours_off', rinherit=OffHour.schema)
+    time_type = TT_OFF
+
+    def __init__(self, data, manager=None):
+        super(BusinessHours, self).__init__(data, manager)
+        self.opt_out = self.data.get('opt-out', self.DEFAULT_OPTOUT)
+        self.default_businesshours = self.data.get(BIZHOURS, self.DEFAULT_BUSINESSHOURS)
+        self.DEFAULT_HR = self.DEFAULT_OFFHOUR  # Temporary for tests
+
+    # convert from 8:30-18:30 PT to on=(M-F,8);tz=pt
+    def get_tag_value(self, i):
+        raw_value = super(BusinessHoursOff, self).get_tag_value(self, i)
+        if raw_value is False:
+            return ""; # Use the default
+
+        on_hour, off_hour, tz = super(BusinessHoursOff, self).parse(raw_value)
+        return "{}=(M-F,{});tz={}".format(self.time_type, off_hour, tz)
 
 class PolicyBuilder(object):
 
