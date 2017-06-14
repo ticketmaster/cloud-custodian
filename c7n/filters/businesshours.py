@@ -4,6 +4,7 @@ from c7n.commands import policy_command
 from c7n.filters import FilterValidationError
 from c7n.filters.offhours import Time
 from c7n.utils import type_schema
+from collections import namedtuple
 
 log = logging.getLogger('custodian.businesshours')
 
@@ -34,10 +35,10 @@ class BusinessHours(Time):
                 'off': 'stop',
                 'on': 'start'
             },
-            'rds': {
-                'off': 'stop',
-                'on': 'start'
-            }
+            # 'rds': {
+            #     'off': 'stop',
+            #     'on': 'start'
+            # }
         }
     }
 
@@ -46,6 +47,10 @@ class BusinessHours(Time):
         self.opt_out = self.data.get('opt-out', self.DEFAULT_OPTOUT)
         self.default_businesshours = self.data.get('businesshours', self.DEFAULT_BUSINESSHOURS)
         self.DEFAULT_HR = self.DEFAULT_ONHOUR  # Temporary for tests
+
+    def process(self, resources, event=None):
+        resources = super(BusinessHours, self).process(resources)
+        return resources
 
     def validate(self):
         """
@@ -61,10 +66,15 @@ class BusinessHours(Time):
         return None
 
     def process_resource_schedule(self, i, value, time_type):
-        on_hour, off_hour = self.parse(value)
+        bh_parsed = self.parse(value)
+        # Add a policy for each supported type of AWS resource. Hope to change
+        # later if a way exists to definitively find the resource type.
         offhour_policies = {'policies': []}
-        offhour_policies['policies'].append(PolicyBuilder('on', i[self.id_key], on_hour).policy)
-        offhour_policies['policies'].append(PolicyBuilder('off', i[self.id_key], off_hour).policy)
+        for resource in self.DEFAULT_ACTIONS['resource_type'].keys():
+            for time_type, hour in zip(
+                    ['on', 'off'], [bh_parsed.on_hour, bh_parsed.off_hour]):
+                offhour_policies['policies'].append(PolicyBuilder(
+                    time_type, resource, hour, bh_parsed.tz).policy)
         self.run_offhours(offhour_policies)
         return False
 
@@ -81,15 +91,28 @@ class BusinessHours(Time):
                         policy.name))
 
     def parse(self, tag_value):
+        """
+        Given a BusinessHours tag, parse attempts to break it down into
+        onhours, offhours, and timezone. Assumes each step is ok, and
+        Pythonically fails with an exception if any step encounters
+        a problem.
+
+        :param tag_value: expects string w/ <start:time>-<end:time> <timezone>
+         example: "8:00-18:00 PT"
+        :return: namedtuple('BHParsed', ['on_hour', 'off_hour', 'tz'])
+         example: BHParsed(8, 18, 'pt')
+        """
         try:
             bh_range, bh_tz = tag_value.split(" ")
             on_range, off_range = bh_range.split("-")
-            on_hour, _ = on_range.split(":")  # Ignore minutes for now
-            off_hour, _ = off_range.split(":")
+            # Ignore minutes for now
+            (on_hour, _), (off_hour, _) = \
+                [(y[0], y[1]) for y in [[int(x) for x in s.split(":")]
+                                        for s in [on_range, off_range]]]
         except ValueError:
             raise FilterValidationError(
                 "Invalid BusinessHours tag specified %s" % tag_value)
-        return on_hour, off_hour
+        return namedtuple('BHParsed', 'on_hour, off_hour, tz')(on_hour, off_hour, bh_tz)
 
 
 class PolicyBuilder(object):
@@ -122,17 +145,17 @@ class PolicyBuilder(object):
                 'off': 'stopped',
                 'on': 'running'
             },
-            'rds': {
-                'off': 'stopped',
-                'on': 'running'
-            }
+            # 'rds': {
+            #     'off': 'stopped',
+            #     'on': 'running'
+            # }
         }
     }
 
     # self.data.get(
     #     "%shour" % self.time_type, self.DEFAULT_HR)
 
-    def __init__(self, time_type, resource, hour):
+    def __init__(self, time_type, resource, hour, tz):
         self.time_type = time_type
         self.resource = resource
         filter_name = "%shour" % time_type
@@ -144,7 +167,7 @@ class PolicyBuilder(object):
                 {'type': "%s" % filter_name,
                  filter_name: hour,
                  'tag': 'custodian_downtime',
-                 'default_tz': self.DEFAULT_TZ,
+                 'default_tz': tz,
                  'weekends': BusinessHours.DEFAULT_WEEKENDS}]
         }
 
