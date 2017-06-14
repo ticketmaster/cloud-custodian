@@ -5,17 +5,27 @@ from c7n.filters import FilterValidationError
 from c7n.filters.offhours import Time
 from c7n.utils import type_schema
 from collections import namedtuple
+from c7n import utils
 
 log = logging.getLogger('custodian.businesshours')
+
+# Constants
+TZ = 'tz'
+OFFHOUR = 'offhour'
+ONHOUR = 'onhour'
+BIZHOURS = 'businesshours'
+# TT = time_type
+TT_ON = 'on'
+TT_OFF = 'off'
 
 
 class BusinessHours(Time):
 
     schema = type_schema(
-        'offhour', rinherit=Time.schema, required=[],
+        OFFHOUR, rinherit=Time.schema, required=[],
         businesshours={'type': 'string'})
 
-    time_type = 'on'
+    time_type = TT_ON
 
     # Defaults and constants
     DEFAULT_TAG = "BusinessHours"
@@ -28,16 +38,16 @@ class BusinessHours(Time):
     DEFAULT_ACTIONS = {
         'resource_type': {
             'asg': {
-                'off': 'suspend',
-                'on': 'resume'
+                TT_OFF: 'suspend',
+                TT_ON: 'resume'
             },
             'ec2': {
-                'off': 'stop',
-                'on': 'start'
+                TT_OFF: 'stop',
+                TT_ON: 'start'
             },
             # 'rds': {
-            #     'off': 'stop',
-            #     'on': 'start'
+            #     TT_OFF: 'stop',
+            #     TT_ON: 'start'
             # }
         }
     }
@@ -45,7 +55,7 @@ class BusinessHours(Time):
     def __init__(self, data, manager=None):
         super(BusinessHours, self).__init__(data, manager)
         self.opt_out = self.data.get('opt-out', self.DEFAULT_OPTOUT)
-        self.default_businesshours = self.data.get('businesshours', self.DEFAULT_BUSINESSHOURS)
+        self.default_businesshours = self.data.get(BIZHOURS, self.DEFAULT_BUSINESSHOURS)
         self.DEFAULT_HR = self.DEFAULT_ONHOUR  # Temporary for tests
 
     def process(self, resources, event=None):
@@ -57,7 +67,7 @@ class BusinessHours(Time):
         Really basic validation here, because we're relying upon validation
         provided by OffHour and OnHour classes.
         """
-        businesshours = self.data.get("businesshours", self.DEFAULT_BUSINESSHOURS)
+        businesshours = self.data.get(BIZHOURS, self.DEFAULT_BUSINESSHOURS)
         if not businesshours:
             raise FilterValidationError("Invalid businesshours specified %s" % businesshours)
         return self
@@ -67,16 +77,34 @@ class BusinessHours(Time):
 
     def process_resource_schedule(self, i, value, time_type):
         bh_parsed = self.parse(value)
-        # Add a policy for each supported type of AWS resource. Hope to change
-        # later if a way exists to definitively find the resource type.
-        offhour_policies = {'policies': []}
-        for resource in self.DEFAULT_ACTIONS['resource_type'].keys():
-            for time_type, hour in zip(
-                    ['on', 'off'], [bh_parsed.on_hour, bh_parsed.off_hour]):
-                offhour_policies['policies'].append(PolicyBuilder(
-                    time_type, resource, hour, bh_parsed.tz).policy)
-        self.run_offhours(offhour_policies)
+        offhours_tags = self.get_offhours_tags()
+        # self.tag_resource(i, offhours_tags)
+        # for resource in self.DEFAULT_ACTIONS['resource_type'].keys():
+        #     for time_type, hour in zip(
+        #             [TT_ON, TT_OFF], [bh_parsed.on_hour, bh_parsed.off_hour]):
+        #         offhour_policies['policies'].append(PolicyBuilder(
+        #             time_type, resource, hour, bh_parsed.tz).policy)
+        # self.run_offhours(offhour_policies)
         return False
+
+    def get_offhours_tags(self):
+        """
+        Very simple helper function right now. Gives the framework for more
+        complexity later, should we desire to make BusinessHours more
+        configurable (ie: weekends rules)
+        :return: dict {'on'"(m-f,
+        """
+        return []
+
+    def tag_resource(self, resource, tags):
+        client = utils.local_session(
+            self.manager.session_factory).client('ec2')
+
+        self.manager.retry(
+            client.create_tags,
+            Resources=[resource[self.id_key]],
+            Tags=tags,
+            DryRun=self.manager.config.dryrun)
 
     @policy_command
     def run_offhours(self, policies, debug=False):
@@ -99,11 +127,11 @@ class BusinessHours(Time):
 
         :param tag_value: expects string w/ <start:time>-<end:time> <timezone>
          example: "8:00-18:00 PT"
-        :return: namedtuple('BHParsed', ['on_hour', 'off_hour', 'tz'])
+        :return: namedtuple('BHParsed', ['onhour', 'offhour', 'tz'])
          example: BHParsed(8, 18, 'pt')
         """
         try:
-            bh_range, bh_tz = tag_value.split(" ")
+            bh_range, bh_tz = [(s[0], s[1].lower()) for s in tag_value.split(" ")]
             on_range, off_range = bh_range.split("-")
             # Ignore minutes for now
             (on_hour, _), (off_hour, _) = \
@@ -112,14 +140,14 @@ class BusinessHours(Time):
         except ValueError:
             raise FilterValidationError(
                 "Invalid BusinessHours tag specified %s" % tag_value)
-        return namedtuple('BHParsed', 'on_hour, off_hour, tz')(on_hour, off_hour, bh_tz)
+        return namedtuple('BHParsed', [ONHOUR, OFFHOUR, TZ])(on_hour, off_hour, bh_tz)
 
 
 class PolicyBuilder(object):
 
     DEFAULT_HOUR = {
-        'off': 18,
-        'on': 8
+        TT_OFF: 18,
+        TT_ON: 8
     }
     DEFAULT_TZ = "pt"
 
@@ -128,8 +156,8 @@ class PolicyBuilder(object):
         'resource': 'ec2',
         'filters': [
             {'State.Name': 'running'},
-            {'type': 'offhour',
-             'offhour': DEFAULT_HOUR['off'],
+            {'type': OFFHOUR,
+             OFFHOUR: DEFAULT_HOUR['off'],
              'tag': 'custodian_downtime',
              'default_tz': DEFAULT_TZ,
              'weekends': BusinessHours.DEFAULT_WEEKENDS}]
@@ -138,16 +166,16 @@ class PolicyBuilder(object):
     EXPECTED_STATE = {
         'resource_type': {
             'asg': {
-                'off': 'suspended',
-                'on': 'running'
+                TT_OFF: 'suspended',
+                TT_ON: 'running'
             },
             'ec2': {
-                'off': 'stopped',
-                'on': 'running'
+                TT_OFF: 'stopped',
+                TT_ON: 'running'
             },
             # 'rds': {
-            #     'off': 'stopped',
-            #     'on': 'running'
+            #     TT_OFF: 'stopped',
+            #     TT_ON: 'running'
             # }
         }
     }
@@ -160,7 +188,7 @@ class PolicyBuilder(object):
         self.resource = resource
         filter_name = "%shour" % time_type
         self.policy = {
-            'name': "%s-businesshours" % filter_name,
+            'name': "%s-%s" % (filter_name, BIZHOURS),
             'resource': "%s" % resource,
             'filters': [
                 {'State.Name': "%s" % self.get_expected_state()},
