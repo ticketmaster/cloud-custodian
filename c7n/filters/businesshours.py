@@ -1,5 +1,6 @@
 import logging
 
+from pprint import pprint
 from c7n.commands import policy_command
 from c7n.filters import FilterValidationError
 from c7n.filters.offhours import Time, OnHour, OffHour
@@ -52,7 +53,11 @@ class BusinessHours(object):
          example: BHParsed(8, 18, 'pt')
         """
         try:
-            bh_range, bh_tz = [(s[0], s[1].lower()) for s in tag_value.split(" ")]
+            pprint(tag_value)
+            bh_range, bh_tz = tag_value.split(" ")
+            bh_tz = bh_tz.lower()
+            pprint(bh_range)
+            pprint(bh_tz)
             on_range, off_range = bh_range.split("-")
             # Ignore minutes for now
             (on_hour, _), (off_hour, _) = \
@@ -77,12 +82,12 @@ class BusinessHoursOn(BusinessHours, OnHour):
 
     # convert from 8:30-18:30 PT to on=(M-F,8);tz=pt
     def get_tag_value(self, i):
-        raw_value = super(BusinessHoursOn, self).get_tag_value(self, i)
+        raw_value = super(BusinessHoursOn, self).get_tag_value(i)
         if raw_value is False:
             return ""; # Use the default
 
         on_hour, off_hour, tz = super(BusinessHoursOn, self).parse(raw_value)
-        return "{}=(M-F,{});tz={}".format(self.time_type, on_hour, tz)
+        return "{}=(M-F,{});{}=(M-F,{});tz={}".format(TT_OFF, off_hour, TT_ON, on_hour, tz)
 
 
 class BusinessHoursOff(BusinessHours, OffHour):
@@ -98,12 +103,12 @@ class BusinessHoursOff(BusinessHours, OffHour):
 
     # convert from 8:30-18:30 PT to on=(M-F,8);tz=pt
     def get_tag_value(self, i):
-        raw_value = super(BusinessHoursOff, self).get_tag_value(self, i)
+        raw_value = super(BusinessHoursOff, self).get_tag_value(i)
         if raw_value is False:
             return ""; # Use the default
 
         on_hour, off_hour, tz = super(BusinessHoursOff, self).parse(raw_value)
-        return "{}=(M-F,{});tz={}".format(self.time_type, off_hour, tz)
+        return "{}=(M-F,{});{}=(M-F,{});tz={}".format(TT_OFF, off_hour, TT_ON, on_hour, tz)
 
 class PolicyBuilder(object):
 

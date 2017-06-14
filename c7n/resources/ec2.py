@@ -30,6 +30,7 @@ from c7n.filters import (
     FilterRegistry, AgeFilter, ValueFilter, Filter, OPERATORS, DefaultVpcBase
 )
 from c7n.filters.offhours import OffHour, OnHour
+from c7n.filters.businesshours import BusinessHoursOff, BusinessHoursOn
 from c7n.filters.health import HealthEventFilter
 import c7n.filters.vpc as net_filters
 
@@ -422,6 +423,67 @@ class InstanceOnHour(OnHour, StateTransitionFilter):
     def process(self, resources, event=None):
         return super(InstanceOnHour, self).process(
             self.filter_instance_state(resources))
+
+
+@filters.register('businesshours_off')
+class InstanceBusinessHourOff(BusinessHoursOff, StateTransitionFilter):
+    """Custodian BusinessHoursOff filter
+
+    Filters running EC2 instances with the intent to stop at a given hour of
+    the day.
+
+    :Example:
+TODO LED
+    .. code-block: yaml
+
+        policies:
+          - name: onhour-evening-stop
+            resource: ec2
+            filters:
+              - type: offhour
+                tag: custodian_downtime
+                default_tz: et
+                offhour: 20
+            actions:
+              - stop
+    """
+
+    valid_origin_states = ('running',)
+
+    def process(self, resources, event=None):
+        return super(BusinessHoursOff, self).process(
+            self.filter_instance_state(resources))
+
+
+@filters.register('businesshours_on')
+class InstanceBusinessHourOn(BusinessHoursOn, StateTransitionFilter):
+    """Custodian OnHour filter
+
+    Filters stopped EC2 instances with the intent to start at a given hour of
+    the day.
+
+    :Example:
+TODO LED
+    .. code-block: yaml
+
+        policies:
+          - name: onhour-morning-start
+            resource: ec2
+            filters:
+              - type: onhour
+                tag: custodian_downtime
+                default_tz: et
+                onhour: 6
+            actions:
+              - start
+    """
+
+    valid_origin_states = ('stopped',)
+
+    def process(self, resources, event=None):
+        return super(BusinessHoursOn, self).process(
+            self.filter_instance_state(resources))
+
 
 
 @filters.register('ephemeral')
