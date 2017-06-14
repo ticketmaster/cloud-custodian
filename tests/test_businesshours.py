@@ -22,8 +22,7 @@ from mock import mock
 from common import BaseTest, instance
 
 from c7n.filters import FilterValidationError
-from c7n.filters.offhours import Time
-from c7n.filters.businesshours import BusinessHours, PolicyBuilder
+from c7n.filters.businesshours import BusinessHours
 
 
 # Per http://blog.xelnor.net/python-mocking-datetime/
