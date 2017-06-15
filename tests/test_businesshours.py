@@ -22,7 +22,7 @@ from mock import mock
 from common import BaseTest, instance
 
 from c7n.filters import FilterValidationError
-from c7n.filters.businesshours import BusinessHours
+from c7n.filters.businesshours import BusinessHours, BusinessHoursOff, BusinessHoursOn
 
 
 # Per http://blog.xelnor.net/python-mocking-datetime/
@@ -65,7 +65,7 @@ class BusinessHoursFilterTest(BaseTest):
         with mock_datetime_now(t, datetime):
             i = instance(Tags=[
                 {'Key': 'BusinessHours', 'Value': '8:00-18:00 ET'}])
-            self.assertEqual(BusinessHours({})(i), True)
+            self.assertEqual(BusinessHoursOn({})(i), True)
 
     # def test_businesshours_records(self):
     #     session_factory = self.replay_flight_data('test_businesshours_records')
