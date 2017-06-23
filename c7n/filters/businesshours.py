@@ -74,6 +74,7 @@ class BusinessHoursOn(BusinessHours, OnHour):
         self.opt_out = self.data.get('opt-out', self.DEFAULT_OPTOUT)
         self.default_businesshours = self.data.get(BIZHOURS, self.DEFAULT_BUSINESSHOURS)
         self.DEFAULT_HR = self.DEFAULT_ONHOUR  # Temporary for tests
+        self.bh_parsed = None
 
     # convert from 8:30-18:30 PT to off=(m-f,18);on=(m-f,8);tz=pt
     def get_tag_value(self, i):
@@ -81,9 +82,9 @@ class BusinessHoursOn(BusinessHours, OnHour):
         if raw_value is False:
             return ""  # Use the default
 
-        bh_parsed = super(BusinessHoursOn, self).parse(raw_value)
+        self.bh_parsed = super(BusinessHoursOn, self).parse(raw_value)
         return "{}=(m-f,{});{}=(m-f,{});tz={}".format(
-            TT_OFF, bh_parsed.offhour, TT_ON, bh_parsed.onhour, bh_parsed.tz)
+            TT_OFF, self.bh_parsed.offhour, TT_ON, self.bh_parsed.onhour, self.bh_parsed.tz)
 
 
 class BusinessHoursOff(BusinessHours, OffHour):
@@ -96,6 +97,7 @@ class BusinessHoursOff(BusinessHours, OffHour):
         self.opt_out = self.data.get('opt-out', self.DEFAULT_OPTOUT)
         self.default_businesshours = self.data.get(BIZHOURS, self.DEFAULT_BUSINESSHOURS)
         self.DEFAULT_HR = self.DEFAULT_OFFHOUR  # Temporary for tests
+        self.bh_parsed = None
 
     # convert from 8:30-18:30 PT to off=(m-f,18);on=(m-f,8);tz=pt
     def get_tag_value(self, i):
@@ -103,6 +105,6 @@ class BusinessHoursOff(BusinessHours, OffHour):
         if raw_value is False:
             return ""  # Use the default
 
-        bh_parsed = super(BusinessHoursOff, self).parse(raw_value)
+        self.bh_parsed = super(BusinessHoursOff, self).parse(raw_value)
         return "{}=(m-f,{});{}=(m-f,{});tz={}".format(
-            TT_OFF, bh_parsed.offhour, TT_ON, bh_parsed.onhour, bh_parsed.tz)
+            TT_OFF, self.bh_parsed.offhour, TT_ON, self.bh_parsed.onhour, self.bh_parsed.tz)
