@@ -2,7 +2,7 @@ import logging
 
 from c7n.filters import FilterValidationError
 from c7n.filters.offhours import OnHour, OffHour
-from c7n.utils import type_schema
+from c7n.utils import type_schema, get_instance_key
 from collections import namedtuple
 
 log = logging.getLogger('custodian.businesshours')
@@ -11,7 +11,8 @@ log = logging.getLogger('custodian.businesshours')
 TZ = 'tz'
 OFFHOUR = 'offhour'
 ONHOUR = 'onhour'
-BIZHOURS = 'businesshours'
+BIZHOURS = 'BusinessHours'
+T24HOURS = '24hours'
 # TT = time_type
 TT_ON = 'on'
 TT_OFF = 'off'
@@ -20,24 +21,21 @@ TT_OFF = 'off'
 class BusinessHours(object):
     # Defaults and constants
     DEFAULT_TAG = "BusinessHours"
-    DEFAULT_BUSINESSHOURS = "8:00-18:00 PT"
     DEFAULT_TZ = 'pt'
     DEFAULT_OFFHOUR = 18
     DEFAULT_ONHOUR = 8
     DEFAULT_WEEKENDS = True
     DEFAULT_OPTOUT = True
 
-    def validate(self):
-        """
-        Really basic validation here, because we're relying upon validation
-        provided by OffHour and OnHour classes.
-        """
-        businesshours = self.data.get(BIZHOURS, self.DEFAULT_BUSINESSHOURS)
-        if not businesshours:
-            raise FilterValidationError("Invalid businesshours specified %s" % businesshours)
-        return self
+    @staticmethod
+    def is_24hours(value):
+        if value == T24HOURS or value == '24hour':
+            return True
+        else:
+            return False
 
-    def parse(self, tag_value):
+    @staticmethod
+    def parse(tag_value):
         """
         Given a BusinessHours tag, parse attempts to break it down into
         onhours, offhours, and timezone. Assumes each step is ok, and
@@ -62,6 +60,20 @@ class BusinessHours(object):
                 "Invalid BusinessHours tag specified %s" % tag_value)
         return namedtuple('BHParsed', [ONHOUR, OFFHOUR, TZ])(on_hour, off_hour, bh_tz)
 
+    def validate(self):
+        """
+        Really basic validation here, because we're relying upon validation
+        provided by OffHour and OnHour classes.
+        """
+        default_onhour = self.data.get(ONHOUR, self.DEFAULT_ONHOUR)
+        default_offhour = self.data.get(OFFHOUR, self.DEFAULT_OFFHOUR)
+        if not default_onhour and not default_offhour:
+            raise FilterValidationError("Invalid hours specified %s, %s" % (default_onhour, default_offhour))
+        return self
+
+    def get_businesshours(self):
+        return "{}:00-{}:00 {}".format(self.DEFAULT_ONHOUR, self.DEFAULT_OFFHOUR, self.default_tz)
+
 
 class BusinessHoursOn(BusinessHours, OnHour):
     schema = type_schema(
@@ -72,16 +84,25 @@ class BusinessHoursOn(BusinessHours, OnHour):
     def __init__(self, data, manager=None):
         super(BusinessHoursOn, self).__init__(data, manager)
         self.opt_out = self.data.get('opt-out', self.DEFAULT_OPTOUT)
-        self.default_businesshours = self.data.get(BIZHOURS, self.DEFAULT_BUSINESSHOURS)
-        self.DEFAULT_HR = self.DEFAULT_ONHOUR  # Temporary for tests
+        self.DEFAULT_ONHOUR = self.data.get(ONHOUR, self.DEFAULT_ONHOUR)
         self.bh_parsed = None
+
+    def process_resource_schedule(self, i, value, time_type):
+        if self.is_24hours(value.lower()):
+            return False
+        elif value == "":  # handle the default value case
+            value = self.get_businesshours()
+        return super(BusinessHoursOn, self).process_resource_schedule(i, value, time_type)
 
     # convert from 8:30-18:30 PT to off=(m-f,18);on=(m-f,8);tz=pt
     def get_tag_value(self, i):
         raw_value = super(BusinessHoursOn, self).get_tag_value(i)
         if raw_value is False:
-            return ""  # Use the default
-
+            return False
+        elif raw_value == "":
+            return raw_value
+        elif self.is_24hours(raw_value.lower()):
+            return raw_value
         self.bh_parsed = super(BusinessHoursOn, self).parse(raw_value)
         return "{}=(m-f,{});{}=(m-f,{});tz={}".format(
             TT_OFF, self.bh_parsed.offhour, TT_ON, self.bh_parsed.onhour, self.bh_parsed.tz)
@@ -95,16 +116,25 @@ class BusinessHoursOff(BusinessHours, OffHour):
     def __init__(self, data, manager=None):
         super(BusinessHoursOff, self).__init__(data, manager)
         self.opt_out = self.data.get('opt-out', self.DEFAULT_OPTOUT)
-        self.default_businesshours = self.data.get(BIZHOURS, self.DEFAULT_BUSINESSHOURS)
-        self.DEFAULT_HR = self.DEFAULT_OFFHOUR  # Temporary for tests
+        self.DEFAULT_OFFHOUR = self.data.get(OFFHOUR, self.DEFAULT_OFFHOUR)
         self.bh_parsed = None
+
+    def process_resource_schedule(self, i, value, time_type):
+        if self.is_24hours(value.lower()):
+            return False
+        elif value == "":  # handle the default value case
+            value = self.get_businesshours()
+        return super(BusinessHoursOff, self).process_resource_schedule(i, value, time_type)
 
     # convert from 8:30-18:30 PT to off=(m-f,18);on=(m-f,8);tz=pt
     def get_tag_value(self, i):
         raw_value = super(BusinessHoursOff, self).get_tag_value(i)
         if raw_value is False:
-            return ""  # Use the default
-
+            return False
+        elif raw_value == "":
+            return raw_value
+        elif self.is_24hours(raw_value.lower()):
+            return raw_value
         self.bh_parsed = super(BusinessHoursOff, self).parse(raw_value)
         return "{}=(m-f,{});{}=(m-f,{});tz={}".format(
             TT_OFF, self.bh_parsed.offhour, TT_ON, self.bh_parsed.onhour, self.bh_parsed.tz)
