@@ -26,6 +26,7 @@ class BusinessHours(object):
     DEFAULT_ONHOUR = 8
     DEFAULT_WEEKENDS = True
     DEFAULT_OPTOUT = True
+    DEFAULT_BUSINESSHOURS = "8:00-18:00 PT"
 
     @staticmethod
     def is_24hours(value):
