@@ -639,6 +639,10 @@ class PolicyLambda(AbstractLambdaFunction):
         return "custodian-%s" % self.policy.name
 
     @property
+    def log(self):
+        return self.policy.data['mode'].get('log', True)
+
+    @property
     def description(self):
         return self.policy.data.get(
             'description', 'cloud-custodian lambda policy')
