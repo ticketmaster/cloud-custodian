@@ -91,7 +91,10 @@ class ResourceQuery(object):
 
         resources = self.filter(resource_type, **params)
         if client_filter:
-            resources = [r for r in resources if r[m.id] in identities]
+            if all(map(lambda r: isinstance(r, six.string_types), resources)):
+                resources = [r for r in resources if r in identities]
+            else:
+                resources = [r for r in resources if r[m.id] in identities]
 
         return resources
 
