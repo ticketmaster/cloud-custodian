@@ -163,7 +163,8 @@ def validate(options):
             if format in ('json',):
                 data = json.load(fh)
             else:
-                log.error("The config file must end in .json, .yml or .yaml")
+                log.error("The config file must end in .json, .yml or .yaml.")
+                raise ValueError("The config file must end in .json, .yml or .yaml.")
 
         errors += schema.validate(data, schm)
         conf_policy_names = {p['name'] for p in data.get('policies', ())}
