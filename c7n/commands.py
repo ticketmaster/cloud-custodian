@@ -160,7 +160,7 @@ def validate(options):
         with open(config_file) as fh:
             if format in ('yml', 'yaml'):
                 data = yaml.safe_load(fh.read())
-            if format in ('json',):
+            elif format in ('json',):
                 data = json.load(fh)
             else:
                 log.error("The config file must end in .json, .yml or .yaml.")
