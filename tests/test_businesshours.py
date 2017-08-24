@@ -59,13 +59,55 @@ def mock_datetime_now(tgt, dt):
 class BusinessHoursFilterTest(BaseTest):
     """BusinessHours testing"""
 
-    def test_businesshours(self):
-        t = datetime.datetime(year=2015, month=12, day=1, hour=19, minute=5,
-                              tzinfo=zoneinfo.gettz('America/New_York'))
+    def test_businesshours_start(self):
+        t = datetime.datetime.now(zoneinfo.gettz('America/Los_Angeles'))
+        t = t.replace(year=2017, month=8, day=23, hour=8, minute=00)
+        results = []
         with mock_datetime_now(t, datetime):
-            i = instance(Tags=[
-                {'Key': 'BusinessHours', 'Value': '8:00-18:00 ET'}])
-            self.assertEqual(BusinessHoursOn({})(i), True)
+            for i in [instance(Tags=[{'Key': 'BusinessHours',
+                                'Value': '8:00-18:00 PT'}]),
+                      instance(Tags=[{'Key': 'BusinessHours',
+                                'Value': '9:00-19:00 PT'}])]:
+                results.append(BusinessHoursOn({})(i))
+            self.assertEqual(results, [True, False])
+
+    def test_businesshours_stop(self):
+        t = datetime.datetime.now(zoneinfo.gettz('America/Los_Angeles'))
+        t = t.replace(year=2017, month=8, day=23, hour=18, minute=00)
+        results = []
+        with mock_datetime_now(t, datetime):
+            for i in [instance(Tags=[{'Key': 'BusinessHours',
+                                'Value': '8:00-18:00 PT'}]),
+                      instance(Tags=[{'Key': 'BusinessHours',
+                                'Value': '9:00-19:00 PT'}])]:
+                results.append(BusinessHoursOff({})(i))
+            self.assertEqual(results, [True, False])
+
+    def test_bad_businesshours_start(self):
+        t = datetime.datetime.now(zoneinfo.gettz('America/Los_Angeles'))
+        t = t.replace(year=2017, month=8, day=23, hour=8, minute=00)
+        results = []
+
+        with mock_datetime_now(t, datetime):
+            for i in [instance(Tags=[{'Key': 'BusinessHours',
+                                'Value': ''}]),
+                      instance(Tags=[{'Key': 'BusinessHours',
+                                'Value': 'enabled'}])]:
+                results.append(BusinessHoursOn({})(i))
+            self.assertEqual(results, [True, True])
+
+    def test_bad_businesshours_stop(self):
+        t = datetime.datetime.now(zoneinfo.gettz('America/Los_Angeles'))
+        t = t.replace(year=2017, month=8, day=23, hour=18, minute=00)
+        results = []
+
+        with mock_datetime_now(t, datetime):
+            for i in [instance(Tags=[{'Key': 'BusinessHours',
+                                'Value': ''}]),
+                      instance(Tags=[{'Key': 'BusinessHours',
+                                'Value': 'enabled'}])]:
+                results.append(BusinessHoursOff({})(i))
+            self.assertEqual(results, [True, True])
 
     # def test_businesshours_records(self):
     #     session_factory = self.replay_flight_data('test_businesshours_records')
@@ -102,10 +144,10 @@ class BusinessHoursFilterTest(BaseTest):
     #         self.assertEqual(len(data), 1)
     #         self.assertEqual(data[0]['InstanceId'], 'i-0a619b58a7e704a9f')
     #
-    def test_validate(self):
-        self.assertRaises(
-            FilterValidationError, BusinessHours({}).validate)
-
+    # def test_validate(self):
+    #     self.assertRaises(
+    #         FilterValidationError, BusinessHours({}).validate)
+    #
     # def test_process(self):
     #     f = OffHour({'opt-out': True})
     #     instances = [
@@ -329,19 +371,6 @@ class BusinessHoursFilterTest(BaseTest):
     #     i = instance(Tags=[
     #         {'Key': 'BusinessHours', 'Value': 'tz=evt'}])
     #     self.assertEqual(OffHour({})(i), False)
-    #
-    # def test_custom_businesshours(self):
-    #     t = datetime.datetime.now(zoneinfo.gettz('America/New_York'))
-    #     t = t.replace(year=2016, month=5, day=26, hour=19, minute=00)
-    #     results = []
-    #
-    #     with mock_datetime_now(t, datetime):
-    #         for i in [instance(Tags=[{'Key': 'BusinessHours',
-    #                             'Value': 'off=(m-f,19);on=(m-f,7);tz=et'}]),
-    #                   instance(Tags=[{'Key': 'BusinessHours',
-    #                             'Value': 'off=(m-f,20);on=(m-f,7);tz=et'}])]:
-    #             results.append(OffHour({})(i))
-    #         self.assertEqual(results, [True, False])
     #
     # def test_custom_onhours(self):
     #     t = datetime.datetime.now(zoneinfo.gettz('America/New_York'))

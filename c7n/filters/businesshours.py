@@ -26,7 +26,7 @@ class BusinessHours(object):
     DEFAULT_ONHOUR = 8
     DEFAULT_WEEKENDS = True
     DEFAULT_OPTOUT = True
-    DEFAULT_BUSINESSHOURS = "8:00-18:00 PT"
+    DEFAULT_BUSINESSHOURS = "8:00-18:00 pt"
 
     @staticmethod
     def is_24hours(value):
@@ -57,8 +57,10 @@ class BusinessHours(object):
                 [(y[0], y[1]) for y in [[int(x) for x in s.split(":")]
                                         for s in [on_range, off_range]]]
         except ValueError:
-            raise FilterValidationError(
-                "Invalid BusinessHours tag specified %s" % tag_value)
+            log.warning("Invalid BusinessHours tag specified %s. Using defaults." % tag_value)
+            on_hour = BusinessHours.DEFAULT_ONHOUR
+            off_hour = BusinessHours.DEFAULT_OFFHOUR
+            bh_tz = BusinessHours.DEFAULT_TZ
         return namedtuple('BHParsed', [ONHOUR, OFFHOUR, TZ])(on_hour, off_hour, bh_tz)
 
     def validate(self):
@@ -91,8 +93,6 @@ class BusinessHoursOn(BusinessHours, OnHour):
     def process_resource_schedule(self, i, value, time_type):
         if self.is_24hours(value.lower()):
             return False
-        elif value == "":  # handle the default value case
-            value = self.get_businesshours()
         return super(BusinessHoursOn, self).process_resource_schedule(i, value, time_type)
 
     # convert from 8:30-18:30 PT to off=(m-f,18);on=(m-f,8);tz=pt
@@ -101,7 +101,7 @@ class BusinessHoursOn(BusinessHours, OnHour):
         if raw_value is False:
             return False
         elif raw_value == "":
-            return raw_value
+            raw_value = self.get_businesshours()
         elif self.is_24hours(raw_value.lower()):
             return raw_value
         self.bh_parsed = super(BusinessHoursOn, self).parse(raw_value)
@@ -123,8 +123,6 @@ class BusinessHoursOff(BusinessHours, OffHour):
     def process_resource_schedule(self, i, value, time_type):
         if self.is_24hours(value.lower()):
             return False
-        elif value == "":  # handle the default value case
-            value = self.get_businesshours()
         return super(BusinessHoursOff, self).process_resource_schedule(i, value, time_type)
 
     # convert from 8:30-18:30 PT to off=(m-f,18);on=(m-f,8);tz=pt
@@ -133,7 +131,7 @@ class BusinessHoursOff(BusinessHours, OffHour):
         if raw_value is False:
             return False
         elif raw_value == "":
-            return raw_value
+            raw_value = self.get_businesshours()
         elif self.is_24hours(raw_value.lower()):
             return raw_value
         self.bh_parsed = super(BusinessHoursOff, self).parse(raw_value)
