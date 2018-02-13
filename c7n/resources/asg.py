@@ -31,6 +31,7 @@ from c7n.filters import (
     FilterRegistry, ValueFilter, AgeFilter, Filter, FilterValidationError,
     OPERATORS)
 from c7n.filters.offhours import OffHour, OnHour
+from c7n.filters.businesshours import BusinessHoursOff, BusinessHoursOn
 import c7n.filters.vpc as net_filters
 
 from c7n.manager import resources
@@ -46,6 +47,8 @@ actions = ActionRegistry('asg.actions')
 
 filters.register('offhour', OffHour)
 filters.register('onhour', OnHour)
+filters.register('businesshours_off', BusinessHoursOff)
+filters.register('businesshours_on', BusinessHoursOn)
 filters.register('tag-count', TagCountFilter)
 filters.register('marked-for-op', TagActionFilter)
 

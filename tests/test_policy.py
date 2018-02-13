@@ -177,7 +177,8 @@ class PolicyPermissions(BaseTest):
 
                 # in memory filters
                 if n in ('event', 'value', 'tag-count',
-                         'marked-for-op', 'offhour', 'onhour', 'age',
+                         'marked-for-op', 'offhour', 'onhour',
+                         'businesshours_on', 'businesshours_off', 'age',
                          'state-age', 'egress', 'ingress',
                          'capacity-delta', 'is-ssl', 'global-grants',
                          'missing-policy-statement', 'missing-statement',
