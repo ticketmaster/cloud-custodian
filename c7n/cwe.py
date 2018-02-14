@@ -67,6 +67,10 @@ class CloudWatchEvents(object):
             'ids': 'responseElements.volumeId',
             'source': 'ec2.amazonaws.com'},
 
+        'AttachVolume': {
+            'ids': 'requestParameters.volumeId',
+            'source': 'ec2.amazonaws.com'},
+
         'SetLoadBalancerPoliciesOfListener': {
             'ids': 'requestParameters.loadBalancerName',
             'source': 'elasticloadbalancing.amazonaws.com'},
