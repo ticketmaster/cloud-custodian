@@ -15,7 +15,7 @@ jsonschema>=2.5.1
 MarkupSafe==1.0
 python-dateutil>=2.5.3
 PyYAML>=3.11
-redis==2.10.5
+redis==4.4.4
 rq-dashboard>=0.3.7
 rq>=0.6.0
 s3transfer>=0.1.9
